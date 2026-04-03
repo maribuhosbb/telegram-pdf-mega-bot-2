@@ -297,11 +297,11 @@ class MegaStorage:
             except Exception:
                 pass
 
-    def upload_file(self, local_path: str, mega_folder_path: str, mega_name: Optional[str] = None):
+       def upload_file(self, local_path: str, mega_folder_path: str, mega_name: Optional[str] = None):
         m = self.connect()
 
         try:
-            self.ensure_folder(mega_folder_path)
+            m.create_folder(mega_folder_path)
         except Exception:
             pass
 
@@ -315,25 +315,6 @@ class MegaStorage:
                     temp_path.unlink(missing_ok=True)
 
         return m.upload(local_path, dest=mega_folder_path)
-
-    # создаём папку если нет
-    try:
-        m.create_folder(mega_folder_path)
-    except:
-        pass
-
-    # если нужно имя файла
-    if mega_name:
-        temp_path = Path(local_path).with_name(mega_name)
-        shutil.copy2(local_path, temp_path)
-        try:
-            return m.upload(str(temp_path), dest=mega_folder_path)
-        finally:
-            if temp_path.exists():
-                temp_path.unlink(missing_ok=True)
-
-    return m.upload(local_path, dest=mega_folder_path)
-
     def download_file(self, mega_file_path: str, local_dir: str) -> Optional[str]:
         m = self.connect()
         file_node = m.find(mega_file_path)
