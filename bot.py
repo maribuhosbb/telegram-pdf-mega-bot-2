@@ -298,7 +298,23 @@ class MegaStorage:
                 pass
 
     def upload_file(self, local_path: str, mega_folder_path: str, mega_name: Optional[str] = None):
-    m = self.connect()
+        m = self.connect()
+
+        try:
+            self.ensure_folder(mega_folder_path)
+        except Exception:
+            pass
+
+        if mega_name:
+            temp_path = Path(local_path).with_name(mega_name)
+            shutil.copy2(local_path, temp_path)
+            try:
+                return m.upload(str(temp_path), dest=mega_folder_path)
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink(missing_ok=True)
+
+        return m.upload(local_path, dest=mega_folder_path)
 
     # создаём папку если нет
     try:
