@@ -139,9 +139,6 @@ def extract_fields_from_text(text: str) -> Tuple[str, str, str]:
     - год
     - месяц
     - номер особового рахунку
-
-    Если твой PDF имеет другой шаблон текста, чаще всего надо будет
-    подправить ТОЛЬКО regex в этой функции.
     """
     text = text or ""
 
@@ -205,26 +202,22 @@ def extract_fields_from_text(text: str) -> Tuple[str, str, str]:
 
     month = None
 
-    # Формат 03.2026 / 3-2026 / 03/2026
     m = re.search(r"\b(0?[1-9]|1[0-2])[./ -](20\d{2})\b", text)
     if m:
         month = m.group(1).zfill(2)
         year = m.group(2)
 
-    # Формат 2026-03 / 2026/03
     if not month:
         m = re.search(r"\b(20\d{2})[./ -](0?[1-9]|1[0-2])\b", text)
         if m:
             year = m.group(1)
             month = m.group(2).zfill(2)
 
-    # Місяць: 3 / 03
     if not month:
         m = re.search(r"(?:Місяць|Месяц|Період|Период)[:\s]*([0-1]?\d)", text, re.IGNORECASE)
         if m:
             month = m.group(1).zfill(2)
 
-    # Название месяца словами
     if not month:
         lowered = text.lower()
         for name, num in month_name_map.items():
@@ -265,7 +258,10 @@ class MegaStorage:
             found = m.find(current_path)
 
             if not found:
-                m.create_folder(current_path)
+                try:
+                    m.create_folder(current_path)
+                except Exception:
+                    pass
                 found = m.find(current_path)
 
             if not found:
@@ -297,11 +293,11 @@ class MegaStorage:
             except Exception:
                 pass
 
-       def upload_file(self, local_path: str, mega_folder_path: str, mega_name: Optional[str] = None):
+    def upload_file(self, local_path: str, mega_folder_path: str, mega_name: Optional[str] = None):
         m = self.connect()
 
         try:
-            m.create_folder(mega_folder_path)
+            self.ensure_folder(mega_folder_path)
         except Exception:
             pass
 
@@ -315,6 +311,7 @@ class MegaStorage:
                     temp_path.unlink(missing_ok=True)
 
         return m.upload(local_path, dest=mega_folder_path)
+
     def download_file(self, mega_file_path: str, local_dir: str) -> Optional[str]:
         m = self.connect()
         file_node = m.find(mega_file_path)
@@ -335,7 +332,6 @@ def ensure_local_workbook(path: str):
         wb = load_workbook(path)
         ws = wb.active
 
-        # Если файл существует, но пустой
         if ws.max_row == 1 and all(ws.cell(1, i + 1).value is None for i in range(3)):
             ws.append(DB_HEADERS)
             wb.save(path)
@@ -427,8 +423,6 @@ def find_records(local_db_path: str, phone: str, account: str) -> List[Dict]:
         phone_ok = (not phone) or (row_phone == phone)
         acc_ok = (not account) or (row_account == account)
 
-        # Если заполнены оба поля — выводим по совпадению одного ИЛИ второго,
-        # как в ТЗ "по телефону или по рахунку".
         if phone and account:
             if row_phone == phone or row_account == account:
                 results.append(row)
@@ -537,11 +531,9 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
         tg_file = await document.get_file()
         await tg_file.download_to_drive(local_pdf)
 
-        # Убедимся, что папки существуют
         storage.ensure_folder(MEGA_ORIGINAL)
         storage.ensure_folder(MEGA_KVIT)
 
-        # Загружаем оригинал
         storage.upload_file(local_pdf, MEGA_ORIGINAL, original_name)
 
         reader = PdfReader(local_pdf)
@@ -870,7 +862,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
     if isinstance(update, Update) and update.effective_message:
         try:
-            await update.effective_message.reply_text("Сталася помилка під час роботи з MEGA або базою даних.")
+            await update.effective_message.reply_text(
+                "Сталася помилка під час роботи з MEGA або базою даних."
+            )
         except Exception:
             pass
 
