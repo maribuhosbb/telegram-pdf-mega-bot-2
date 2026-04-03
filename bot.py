@@ -866,8 +866,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # СБОРКА ПРИЛОЖЕНИЯ
 # =========================================================
 def build_application() -> Application:
-    if "PUT_BOT_TOKEN_HERE" in TOKEN:
-        raise RuntimeError("Заповніть BOT_TOKEN у змінних середовища.")
+    if not TOKEN:
+    raise RuntimeError("Заповніть BOT_TOKEN у змінних середовища.")
 
     app = Application.builder().token(TOKEN).build()
 
