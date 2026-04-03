@@ -298,27 +298,25 @@ class MegaStorage:
                 pass
 
     def upload_file(self, local_path: str, mega_folder_path: str, mega_name: Optional[str] = None):
-        """
-        Загружает файл в указанную папку Mega.
-        """
-        m = self.connect()
-        folder_node = self.ensure_folder(mega_folder_path)
+    m = self.connect()
 
-        if mega_name:
-            src = Path(local_path)
-            temp_copy = src.with_name(mega_name)
+    # создаём папку если нет
+    try:
+        m.create_folder(mega_folder_path)
+    except:
+        pass
 
-            if str(src.resolve()) != str(temp_copy.resolve()):
-                shutil.copy2(local_path, temp_copy)
-                try:
-                    return m.upload(str(temp_copy), dest=folder_node)
-                finally:
-                    if temp_copy.exists():
-                        temp_copy.unlink(missing_ok=True)
-            else:
-                return m.upload(local_path, dest=folder_node)
+    # если нужно имя файла
+    if mega_name:
+        temp_path = Path(local_path).with_name(mega_name)
+        shutil.copy2(local_path, temp_path)
+        try:
+            return m.upload(str(temp_path), dest=mega_folder_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
 
-        return m.upload(local_path, dest=folder_node)
+    return m.upload(local_path, dest=mega_folder_path)
 
     def download_file(self, mega_file_path: str, local_dir: str) -> Optional[str]:
         m = self.connect()
