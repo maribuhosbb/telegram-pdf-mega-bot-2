@@ -3,3 +3,4 @@ PyPDF2==3.0.1
 pdfplumber==0.11.5
 openpyxl==3.1.5
 mega.py==1.0.8
+tenacity==8.2.2
