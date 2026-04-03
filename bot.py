@@ -254,14 +254,26 @@ class MegaStorage:
         return self.client
 
     def ensure_folder(self, path: str):
-        m = self.connect()
-        m.create_folder(path)
-        found = m.find(path)
+    m = self.connect()
+    parts = [p for p in path.strip("/").split("/") if p]
+
+    current_path = ""
+    current_node = None
+
+    for part in parts:
+        current_path = f"{current_path}/{part}" if current_path else part
+        found = m.find(current_path)
+
         if not found:
-            raise RuntimeError(f"Не вдалося знайти або створити папку: {path}")
-        if isinstance(found, list):
-            return found[0]
-        return found
+            m.create_folder(current_path)
+            found = m.find(current_path)
+
+        if not found:
+            raise RuntimeError(f"Не вдалося знайти або створити папку: {current_path}")
+
+        current_node = found[0] if isinstance(found, list) else found
+
+    return current_node
 
     def find(self, path: str):
         m = self.connect()
