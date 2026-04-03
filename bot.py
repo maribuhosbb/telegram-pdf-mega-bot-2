@@ -34,13 +34,11 @@ from telegram.ext import (
 # =========================================================
 # НАСТРОЙКИ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
 # =========================================================
-TOKEN = os.getenv("BOT_TOKEN", "PUT_BOT_TOKEN_HERE")
-MEGA_EMAIL = os.getenv("MEGA_EMAIL", "PUT_MEGA_EMAIL_HERE")
-MEGA_PASSWORD = os.getenv("MEGA_PASSWORD", "PUT_MEGA_PASSWORD_HERE")
+TOKEN = os.getenv("BOT_TOKEN", "").strip()
+MEGA_EMAIL = os.getenv("MEGA_EMAIL", "").strip()
+MEGA_PASSWORD = os.getenv("MEGA_PASSWORD", "").strip()
+ADMIN_IDS_RAW = os.getenv("ADMIN_IDS", "").strip()
 
-# Необязательно:
-# ADMIN_IDS=123456789,987654321
-ADMIN_IDS_RAW = os.getenv("ADMIN_IDS", "")
 ALLOWED_USERS = {
     int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.strip().isdigit()
 }
