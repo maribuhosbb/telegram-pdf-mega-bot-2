@@ -438,7 +438,7 @@ def build_pick_keyboard(action: str, records: List[Dict]) -> InlineKeyboardMarku
     buttons = []
     for rec in records:
         text = f'{action}: {rec["account"]} | {rec["phone"]}'
-        buttons.append([InlineKeyboardButton(text, callback_data=f"{action}|{rec["row"]}")])
+        buttons.append([InlineKeyboardButton(text, callback_data=f"{action}|{rec['row']}")])
     return InlineKeyboardMarkup(buttons)
 
 
