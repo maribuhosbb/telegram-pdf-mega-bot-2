@@ -873,6 +873,12 @@ async def edit_new_fio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.exception("Unhandled error", exc_info=context.error)
 
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text("Сталася помилка під час роботи з MEGA або базою даних.")
+        except Exception:
+            pass
+
 
 # =========================================================
 # СБОРКА ПРИЛОЖЕНИЯ
