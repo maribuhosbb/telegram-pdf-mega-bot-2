@@ -303,6 +303,10 @@ class MegaStorage:
 
         if mega_name:
             temp_path = Path(local_path).with_name(mega_name)
+
+            if Path(local_path).resolve() == temp_path.resolve():
+                return m.upload(local_path, dest=mega_folder_path)
+
             shutil.copy2(local_path, temp_path)
             try:
                 return m.upload(str(temp_path), dest=mega_folder_path)
