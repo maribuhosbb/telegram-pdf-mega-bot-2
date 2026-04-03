@@ -1,0 +1,16 @@
+services:
+  - type: worker
+    name: telegram-mega-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: MEGA_EMAIL
+        sync: false
+      - key: MEGA_PASSWORD
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
