@@ -11,7 +11,6 @@ import pdfplumber
 from mega import Mega
 from openpyxl import Workbook, load_workbook
 from PyPDF2 import PdfReader, PdfWriter
-
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -31,19 +30,13 @@ from telegram.ext import (
     filters,
 )
 
-# =========================================================
-# НАСТРОЙКИ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
-# =========================================================
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
 MEGA_EMAIL = os.getenv("MEGA_EMAIL", "").strip()
 MEGA_PASSWORD = os.getenv("MEGA_PASSWORD", "").strip()
 ADMIN_IDS_RAW = os.getenv("ADMIN_IDS", "").strip()
 
-ALLOWED_USERS = {
-    int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.strip().isdigit()
-}
+ALLOWED_USERS = {int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.strip().isdigit()}
 
-# Папки на Mega
 MEGA_ROOT = "151-4"
 MEGA_ORIGINAL = f"{MEGA_ROOT}/Original"
 MEGA_KVIT = f"{MEGA_ROOT}/Kvitancii"
@@ -52,9 +45,6 @@ MEGA_CLIENTS = f"{MEGA_ROOT}/Klienty"
 DB_FILENAME = "База данных.xlsx"
 DB_HEADERS = ["Телефон", "Рахунок", "Ф.І.О."]
 
-# =========================================================
-# СОСТОЯНИЯ ДИАЛОГОВ
-# =========================================================
 ADD_PHONE, ADD_ACCOUNT, ADD_FIO = range(3)
 DEL_PHONE_OR_SKIP, DEL_ACCOUNT_OR_SKIP, DEL_PICK = range(10, 13)
 EDIT_PHONE_OR_SKIP, EDIT_ACCOUNT_OR_SKIP, EDIT_PICK, EDIT_NEW_PHONE, EDIT_NEW_ACCOUNT, EDIT_NEW_FIO = range(20, 26)
@@ -62,9 +52,6 @@ EDIT_PHONE_OR_SKIP, EDIT_ACCOUNT_OR_SKIP, EDIT_PICK, EDIT_NEW_PHONE, EDIT_NEW_AC
 logger = logging.getLogger(__name__)
 
 
-# =========================================================
-# КЛАВИАТУРЫ
-# =========================================================
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
@@ -86,9 +73,6 @@ def cancel_button() -> ReplyKeyboardMarkup:
     )
 
 
-# =========================================================
-# ДОСТУП ПО ADMIN_IDS
-# =========================================================
 def is_admin(update: Update) -> bool:
     if not ALLOWED_USERS:
         return True
@@ -110,9 +94,6 @@ async def require_admin(update: Update) -> bool:
     return False
 
 
-# =========================================================
-# ВСПОМОГАТЕЛЬНОЕ
-# =========================================================
 def normalize_phone(value: str) -> str:
     return re.sub(r"\D+", "", value or "")
 
@@ -126,32 +107,12 @@ def normalize_account(value: str) -> str:
 
 
 def sanitize_filename(name: str) -> str:
-    name = re.sub(r'[\\/*?:"<>|]+', "_", name)
+    name = re.sub(r'[\\/*?:"<>|]+', "_", name or "")
     name = re.sub(r"\s+", " ", name).strip()
     return name[:180] or "file"
 
 
-def make_unique_filename(filename: str, used_names: set[str]) -> str:
-    base = Path(filename).stem
-    ext = Path(filename).suffix or ".pdf"
-    candidate = filename
-    counter = 2
-
-    while candidate in used_names:
-        candidate = f"{base}_{counter}{ext}"
-        counter += 1
-
-    used_names.add(candidate)
-    return candidate
-
-
 def extract_fields_from_text(text: str) -> Tuple[str, str, str]:
-    """
-    Пытается вытащить:
-    - год
-    - месяц
-    - номер особового рахунку
-    """
     text = text or ""
 
     account_patterns = [
@@ -160,36 +121,15 @@ def extract_fields_from_text(text: str) -> Tuple[str, str, str]:
         r"Лицев(?:ой|ого)\s+счет[:\s№#]*([0-9]{5,20})",
         r"\bрахунок[:\s№#]*([0-9]{5,20})",
     ]
-
-    year_patterns = [
-        r"\b(20\d{2})\b",
-    ]
+    year_patterns = [r"\b(20\d{2})\b"]
 
     month_name_map = {
-        "січень": "01",
-        "лютий": "02",
-        "березень": "03",
-        "квітень": "04",
-        "травень": "05",
-        "червень": "06",
-        "липень": "07",
-        "серпень": "08",
-        "вересень": "09",
-        "жовтень": "10",
-        "листопад": "11",
-        "грудень": "12",
-        "январь": "01",
-        "февраль": "02",
-        "март": "03",
-        "апрель": "04",
-        "май": "05",
-        "июнь": "06",
-        "июль": "07",
-        "август": "08",
-        "сентябрь": "09",
-        "октябрь": "10",
-        "ноябрь": "11",
-        "декабрь": "12",
+        "січень": "01", "лютий": "02", "березень": "03", "квітень": "04",
+        "травень": "05", "червень": "06", "липень": "07", "серпень": "08",
+        "вересень": "09", "жовтень": "10", "листопад": "11", "грудень": "12",
+        "январь": "01", "февраль": "02", "март": "03", "апрель": "04",
+        "май": "05", "июнь": "06", "июль": "07", "август": "08",
+        "сентябрь": "09", "октябрь": "10", "ноябрь": "11", "декабрь": "12",
     }
 
     account = None
@@ -243,9 +183,6 @@ def extract_fields_from_text(text: str) -> Tuple[str, str, str]:
     return year, month, account
 
 
-# =========================================================
-# MEGA-ХРАНИЛИЩЕ
-# =========================================================
 class MegaStorage:
     def __init__(self, email: str, password: str):
         self.email = email
@@ -253,9 +190,6 @@ class MegaStorage:
         self.client = None
 
     def connect(self):
-        if not self.email or not self.password:
-            raise RuntimeError("Заповніть MEGA_EMAIL і MEGA_PASSWORD у змінних середовища.")
-
         if self.client is None:
             mega = Mega()
             self.client = mega.login(self.email, self.password)
@@ -287,8 +221,7 @@ class MegaStorage:
         return current_node
 
     def find(self, path: str):
-        m = self.connect()
-        return m.find(path)
+        return self.connect().find(path)
 
     def delete_if_exists(self, path: str):
         m = self.connect()
@@ -296,71 +229,65 @@ class MegaStorage:
         if not found:
             return
 
-        if isinstance(found, list):
-            for item in found:
-                try:
-                    m.delete(item)
-                except Exception:
-                    pass
-        else:
+        items = found if isinstance(found, list) else [found]
+        for item in items:
             try:
-                m.delete(found)
+                m.delete(item)
             except Exception:
                 pass
 
     def upload_file(self, local_path: str, mega_folder_path: str, mega_name: Optional[str] = None):
         m = self.connect()
-
-        try:
-            self.ensure_folder(mega_folder_path)
-        except Exception:
-            pass
+        folder_node = self.ensure_folder(mega_folder_path)
 
         if mega_name:
-            temp_path = Path(local_path).with_name(mega_name)
+            source_path = Path(local_path)
+            temp_path = source_path.with_name(mega_name)
 
-            if Path(local_path).resolve() == temp_path.resolve():
-                return m.upload(local_path, dest=mega_folder_path)
+            if source_path.resolve() == temp_path.resolve():
+                return m.upload(str(source_path), dest=folder_node)
 
-            shutil.copy2(local_path, temp_path)
+            shutil.copy2(source_path, temp_path)
             try:
-                return m.upload(str(temp_path), dest=mega_folder_path)
+                return m.upload(str(temp_path), dest=folder_node)
             finally:
                 if temp_path.exists():
                     temp_path.unlink(missing_ok=True)
 
-        return m.upload(local_path, dest=mega_folder_path)
+        return m.upload(local_path, dest=folder_node)
 
     def download_file(self, mega_file_path: str, local_dir: str) -> Optional[str]:
         m = self.connect()
         file_node = m.find(mega_file_path)
         if not file_node:
             return None
-        downloaded = m.download(file_node, local_dir)
-        return downloaded
+
+        node = file_node[0] if isinstance(file_node, list) else file_node
+        return m.download(node, local_dir)
 
 
 storage = MegaStorage(MEGA_EMAIL, MEGA_PASSWORD)
 
 
-# =========================================================
-# EXCEL
-# =========================================================
 def ensure_local_workbook(path: str):
-    if Path(path).exists():
-        wb = load_workbook(path)
-        ws = wb.active
+    local_path = Path(path)
 
-        if ws.max_row == 1 and all(ws.cell(1, i + 1).value is None for i in range(3)):
+    if local_path.exists():
+        wb = load_workbook(local_path)
+        ws = wb.active
+        header_values = [ws.cell(1, i + 1).value for i in range(3)]
+
+        if header_values != DB_HEADERS and ws.max_row == 1 and all(v is None for v in header_values):
+            ws.delete_rows(1, 1)
             ws.append(DB_HEADERS)
-            wb.save(path)
+            wb.save(local_path)
         return
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Клієнти"
     ws.append(DB_HEADERS)
-    wb.save(path)
+    wb.save(local_path)
 
 
 def fetch_database_to_temp(tmp_dir: str) -> str:
@@ -370,17 +297,17 @@ def fetch_database_to_temp(tmp_dir: str) -> str:
 
     downloaded = storage.download_file(db_mega_path, tmp_dir)
     if downloaded:
-        downloaded_path = str(downloaded)
-        if downloaded_path != local_path and Path(downloaded_path).exists():
-            shutil.move(downloaded_path, local_path)
+        downloaded_path = Path(downloaded)
+        target_path = Path(local_path)
+        if downloaded_path.resolve() != target_path.resolve() and downloaded_path.exists():
+            shutil.move(str(downloaded_path), str(target_path))
 
     ensure_local_workbook(local_path)
     return local_path
 
 
 def save_database_back(local_path: str):
-    db_mega_path = f"{MEGA_CLIENTS}/{DB_FILENAME}"
-    storage.delete_if_exists(db_mega_path)
+    storage.ensure_folder(MEGA_CLIENTS)
     storage.upload_file(local_path, MEGA_CLIENTS, DB_FILENAME)
 
 
@@ -443,14 +370,11 @@ def find_records(local_db_path: str, phone: str, account: str) -> List[Dict]:
         if phone and account:
             if row_phone == phone and row_account == account:
                 results.append(row)
-            continue
-
-        if phone and row_phone == phone:
-            results.append(row)
-            continue
-
-        if account and row_account == account:
-            results.append(row)
+        else:
+            phone_ok = (not phone) or (row_phone == phone)
+            acc_ok = (not account) or (row_account == account)
+            if phone_ok and acc_ok:
+                results.append(row)
 
     return results
 
@@ -463,14 +387,11 @@ def build_pick_keyboard(action: str, records: List[Dict]) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(buttons)
 
 
-# =========================================================
-# START / CANCEL
-# =========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await require_admin(update):
         return
-    context.chat_data.clear()
-    await update.message.reply_text("Оберіть дію.", reply_markup=main_menu())
+    if update.message:
+        await update.message.reply_text("Оберіть дію.", reply_markup=main_menu())
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -478,13 +399,11 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     context.chat_data.clear()
-    await update.message.reply_text("Скасовано.", reply_markup=main_menu())
+    if update.message:
+        await update.message.reply_text("Скасовано.", reply_markup=main_menu())
     return ConversationHandler.END
 
 
-# =========================================================
-# МЕНЮ
-# =========================================================
 async def menu_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await require_admin(update):
         return
@@ -492,7 +411,6 @@ async def menu_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
 
     if text == "Завантажити та Розділити":
-        context.chat_data.clear()
         context.chat_data["await_pdf"] = True
         await update.message.reply_text(
             "Надішліть PDF-файл одним повідомленням.\n"
@@ -526,9 +444,6 @@ async def menu_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Оберіть кнопку з меню.", reply_markup=main_menu())
 
 
-# =========================================================
-# PDF
-# =========================================================
 async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await require_admin(update):
         return
@@ -538,12 +453,12 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     document = update.message.document
     if not document:
-        await update.message.reply_text("Чекаю саме PDF-файл.")
+        await update.message.reply_text("Чекаю саме PDF-файл.", reply_markup=main_menu())
         return
 
-    file_name = (document.file_name or "").strip()
+    file_name = document.file_name or ""
     if not file_name.lower().endswith(".pdf"):
-        await update.message.reply_text("Це не PDF. Надішліть файл з розширенням .pdf")
+        await update.message.reply_text("Це не PDF. Надішліть файл з розширенням .pdf", reply_markup=main_menu())
         return
 
     context.chat_data["await_pdf"] = False
@@ -558,26 +473,35 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         storage.ensure_folder(MEGA_ORIGINAL)
         storage.ensure_folder(MEGA_KVIT)
+
         storage.upload_file(local_pdf, MEGA_ORIGINAL, original_name)
 
         reader = PdfReader(local_pdf)
         uploaded_count = 0
-        used_names: set[str] = set()
+        used_names = set()
 
         with pdfplumber.open(local_pdf) as pdf:
-            for index, page in enumerate(reader.pages, start=1):
+            for index, page in enumerate(reader.pages):
                 writer = PdfWriter()
                 writer.add_page(page)
 
                 page_text = ""
                 try:
-                    page_text = pdf.pages[index - 1].extract_text() or ""
+                    page_text = pdf.pages[index].extract_text() or ""
                 except Exception:
                     page_text = ""
 
                 year, month, account = extract_fields_from_text(page_text)
                 base_name = sanitize_filename(f"{year}_{month}_{account}.pdf")
-                split_name = make_unique_filename(base_name, used_names)
+                split_name = base_name
+
+                suffix = 2
+                while split_name in used_names:
+                    stem = Path(base_name).stem
+                    split_name = sanitize_filename(f"{stem}_{suffix}.pdf")
+                    suffix += 1
+                used_names.add(split_name)
+
                 split_path = os.path.join(tmp_dir, split_name)
 
                 with open(split_path, "wb") as out:
@@ -601,16 +525,11 @@ async def unknown_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# =========================================================
-# ДОБАВИТЬ РАХУНОК
-# =========================================================
 async def add_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     value = normalize_phone(update.message.text)
 
     if not validate_phone(value):
-        await update.message.reply_text(
-            "Телефон має містити рівно 12 цифр без +. Спробуйте ще раз."
-        )
+        await update.message.reply_text("Телефон має містити рівно 12 цифр без +. Спробуйте ще раз.")
         return ADD_PHONE
 
     context.chat_data["new_phone"] = value
@@ -644,17 +563,10 @@ async def add_fio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_database_back(local_db)
 
     context.chat_data.clear()
-
-    await update.message.reply_text(
-        f"Рахунок {html.escape(account)} додано.",
-        reply_markup=main_menu(),
-    )
+    await update.message.reply_text(f"Рахунок {html.escape(account)} додано.", reply_markup=main_menu())
     return ConversationHandler.END
 
 
-# =========================================================
-# УДАЛИТЬ РАХУНОК
-# =========================================================
 async def delete_phone_or_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw = update.message.text.strip()
 
@@ -665,9 +577,7 @@ async def delete_phone_or_skip(update: Update, context: ContextTypes.DEFAULT_TYP
 
     value = normalize_phone(raw)
     if not validate_phone(value):
-        await update.message.reply_text(
-            "Телефон має містити рівно 12 цифр без + або надішліть -"
-        )
+        await update.message.reply_text("Телефон має містити рівно 12 цифр без + або надішліть -")
         return DEL_PHONE_OR_SKIP
 
     context.chat_data["search_phone"] = value
@@ -694,15 +604,8 @@ async def delete_account_or_skip(update: Update, context: ContextTypes.DEFAULT_T
         return ConversationHandler.END
 
     context.chat_data["delete_found"] = found
-
-    await update.message.reply_text(
-        "Знайдено записи. Натисніть, що саме видалити.",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-    await update.message.reply_text(
-        "Виберіть рядок для видалення:",
-        reply_markup=build_pick_keyboard("delete", found),
-    )
+    await update.message.reply_text("Знайдено записи. Натисніть, що саме видалити.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Виберіть рядок для видалення:", reply_markup=build_pick_keyboard("delete", found))
     return DEL_PICK
 
 
@@ -718,6 +621,7 @@ async def delete_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return DEL_PICK
 
     row_number = int(row_str)
+    account_removed = ""
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         local_db = fetch_database_to_temp(tmp_dir)
@@ -740,9 +644,6 @@ async def delete_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     return ConversationHandler.END
 
 
-# =========================================================
-# РЕДАКТИРОВАТЬ РАХУНОК
-# =========================================================
 async def edit_phone_or_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw = update.message.text.strip()
 
@@ -753,9 +654,7 @@ async def edit_phone_or_skip(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     value = normalize_phone(raw)
     if not validate_phone(value):
-        await update.message.reply_text(
-            "Телефон має містити рівно 12 цифр без + або надішліть -"
-        )
+        await update.message.reply_text("Телефон має містити рівно 12 цифр без + або надішліть -")
         return EDIT_PHONE_OR_SKIP
 
     context.chat_data["search_phone"] = value
@@ -782,15 +681,8 @@ async def edit_account_or_skip(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
     context.chat_data["edit_found"] = found
-
-    await update.message.reply_text(
-        "Знайдено записи. Натисніть, який саме редагувати.",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-    await update.message.reply_text(
-        "Виберіть рядок для редагування:",
-        reply_markup=build_pick_keyboard("edit", found),
-    )
+    await update.message.reply_text("Знайдено записи. Натисніть, який саме редагувати.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Виберіть рядок для редагування:", reply_markup=build_pick_keyboard("edit", found))
     return EDIT_PICK
 
 
@@ -833,9 +725,7 @@ async def edit_new_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     value = normalize_phone(update.message.text)
 
     if not validate_phone(value):
-        await update.message.reply_text(
-            "Телефон має містити рівно 12 цифр без +. Спробуйте ще раз."
-        )
+        await update.message.reply_text("Телефон має містити рівно 12 цифр без +. Спробуйте ще раз.")
         return EDIT_NEW_PHONE
 
     context.chat_data["edit_phone"] = value
@@ -871,33 +761,28 @@ async def edit_new_fio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     old_account = context.chat_data.get("edit_old_account", account)
     context.chat_data.clear()
-
-    await update.message.reply_text(
-        f"Рахунок {old_account} відредаговано.",
-        reply_markup=main_menu(),
-    )
+    await update.message.reply_text(f"Рахунок {old_account} відредаговано.", reply_markup=main_menu())
     return ConversationHandler.END
 
 
-# =========================================================
-# ОБРАБОТКА ОШИБОК
-# =========================================================
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.exception("Unhandled error", exc_info=context.error)
 
+    message = "Сталася помилка під час роботи з MEGA або базою даних."
+    err = context.error
+    if err and "EACCESS" in str(err):
+        message = (
+            "MEGA не дозволяє запис у цю папку.\n"
+            "Перевірте, що папка 151-4/Klienty належить вашому акаунту і має права на запис."
+        )
+
     if isinstance(update, Update) and update.effective_message:
         try:
-            await update.effective_message.reply_text(
-                "Сталася помилка під час роботи з MEGA або базою даних.",
-                reply_markup=main_menu(),
-            )
+            await update.effective_message.reply_text(message, reply_markup=main_menu())
         except Exception:
             pass
 
 
-# =========================================================
-# СБОРКА ПРИЛОЖЕНИЯ
-# =========================================================
 def build_application() -> Application:
     if not TOKEN:
         raise RuntimeError("Заповніть BOT_TOKEN у змінних середовища.")
