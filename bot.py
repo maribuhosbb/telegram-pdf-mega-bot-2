@@ -56,9 +56,7 @@ DB_HEADERS = ["Телефон", "Рахунок", "Ф.І.О."]
 # СОСТОЯНИЯ ДИАЛОГОВ
 # =========================================================
 ADD_PHONE, ADD_ACCOUNT, ADD_FIO = range(3)
-
 DEL_PHONE_OR_SKIP, DEL_ACCOUNT_OR_SKIP, DEL_PICK = range(10, 13)
-
 EDIT_PHONE_OR_SKIP, EDIT_ACCOUNT_OR_SKIP, EDIT_PICK, EDIT_NEW_PHONE, EDIT_NEW_ACCOUNT, EDIT_NEW_FIO = range(20, 26)
 
 logger = logging.getLogger(__name__)
@@ -131,6 +129,20 @@ def sanitize_filename(name: str) -> str:
     name = re.sub(r'[\\/*?:"<>|]+', "_", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name[:180] or "file"
+
+
+def make_unique_filename(filename: str, used_names: set[str]) -> str:
+    base = Path(filename).stem
+    ext = Path(filename).suffix or ".pdf"
+    candidate = filename
+    counter = 2
+
+    while candidate in used_names:
+        candidate = f"{base}_{counter}{ext}"
+        counter += 1
+
+    used_names.add(candidate)
+    return candidate
 
 
 def extract_fields_from_text(text: str) -> Tuple[str, str, str]:
@@ -241,6 +253,9 @@ class MegaStorage:
         self.client = None
 
     def connect(self):
+        if not self.email or not self.password:
+            raise RuntimeError("Заповніть MEGA_EMAIL і MEGA_PASSWORD у змінних середовища.")
+
         if self.client is None:
             mega = Mega()
             self.client = mega.login(self.email, self.password)
@@ -355,8 +370,9 @@ def fetch_database_to_temp(tmp_dir: str) -> str:
 
     downloaded = storage.download_file(db_mega_path, tmp_dir)
     if downloaded:
-        if downloaded != local_path and Path(downloaded).exists():
-            shutil.move(downloaded, local_path)
+        downloaded_path = str(downloaded)
+        if downloaded_path != local_path and Path(downloaded_path).exists():
+            shutil.move(downloaded_path, local_path)
 
     ensure_local_workbook(local_path)
     return local_path
@@ -424,15 +440,17 @@ def find_records(local_db_path: str, phone: str, account: str) -> List[Dict]:
         row_phone = normalize_phone(row["phone"])
         row_account = normalize_account(row["account"])
 
-        phone_ok = (not phone) or (row_phone == phone)
-        acc_ok = (not account) or (row_account == account)
-
         if phone and account:
-            if row_phone == phone or row_account == account:
+            if row_phone == phone and row_account == account:
                 results.append(row)
-        else:
-            if phone_ok and acc_ok:
-                results.append(row)
+            continue
+
+        if phone and row_phone == phone:
+            results.append(row)
+            continue
+
+        if account and row_account == account:
+            results.append(row)
 
     return results
 
@@ -451,6 +469,7 @@ def build_pick_keyboard(action: str, records: List[Dict]) -> InlineKeyboardMarku
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await require_admin(update):
         return
+    context.chat_data.clear()
     await update.message.reply_text("Оберіть дію.", reply_markup=main_menu())
 
 
@@ -473,6 +492,7 @@ async def menu_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
 
     if text == "Завантажити та Розділити":
+        context.chat_data.clear()
         context.chat_data["await_pdf"] = True
         await update.message.reply_text(
             "Надішліть PDF-файл одним повідомленням.\n"
@@ -521,7 +541,8 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Чекаю саме PDF-файл.")
         return
 
-    if not document.file_name.lower().endswith(".pdf"):
+    file_name = (document.file_name or "").strip()
+    if not file_name.lower().endswith(".pdf"):
         await update.message.reply_text("Це не PDF. Надішліть файл з розширенням .pdf")
         return
 
@@ -529,7 +550,7 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.chat.send_action(ChatAction.UPLOAD_DOCUMENT)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        original_name = sanitize_filename(document.file_name)
+        original_name = sanitize_filename(file_name)
         local_pdf = os.path.join(tmp_dir, original_name)
 
         tg_file = await document.get_file()
@@ -537,25 +558,26 @@ async def handle_pdf_document(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         storage.ensure_folder(MEGA_ORIGINAL)
         storage.ensure_folder(MEGA_KVIT)
-
         storage.upload_file(local_pdf, MEGA_ORIGINAL, original_name)
 
         reader = PdfReader(local_pdf)
         uploaded_count = 0
+        used_names: set[str] = set()
 
         with pdfplumber.open(local_pdf) as pdf:
-            for index, page in enumerate(reader.pages):
+            for index, page in enumerate(reader.pages, start=1):
                 writer = PdfWriter()
                 writer.add_page(page)
 
                 page_text = ""
                 try:
-                    page_text = pdf.pages[index].extract_text() or ""
+                    page_text = pdf.pages[index - 1].extract_text() or ""
                 except Exception:
                     page_text = ""
 
                 year, month, account = extract_fields_from_text(page_text)
-                split_name = sanitize_filename(f"{year}_{month}_{account}.pdf")
+                base_name = sanitize_filename(f"{year}_{month}_{account}.pdf")
+                split_name = make_unique_filename(base_name, used_names)
                 split_path = os.path.join(tmp_dir, split_name)
 
                 with open(split_path, "wb") as out:
@@ -696,7 +718,6 @@ async def delete_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return DEL_PICK
 
     row_number = int(row_str)
-    account_removed = ""
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         local_db = fetch_database_to_temp(tmp_dir)
@@ -867,7 +888,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "Сталася помилка під час роботи з MEGA або базою даних."
+                "Сталася помилка під час роботи з MEGA або базою даних.",
+                reply_markup=main_menu(),
             )
         except Exception:
             pass
@@ -879,6 +901,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 def build_application() -> Application:
     if not TOKEN:
         raise RuntimeError("Заповніть BOT_TOKEN у змінних середовища.")
+    if not MEGA_EMAIL or not MEGA_PASSWORD:
+        raise RuntimeError("Заповніть MEGA_EMAIL і MEGA_PASSWORD у змінних середовища.")
 
     app = Application.builder().token(TOKEN).build()
 
